@@ -198,6 +198,39 @@ body{
 }
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 
+/* —— 🏆 成就 —— */
+.ach-btn{
+  border:1px solid #e8d9a8;background:linear-gradient(180deg,#fffdf4,#fff5da);
+  color:#9a7c3a;font-weight:800;font-size:13px;padding:9px 16px;border-radius:999px;
+  cursor:pointer;font-family:inherit;letter-spacing:.5px;
+  transition:transform .2s var(--ease),box-shadow .2s ease;
+  box-shadow:0 8px 18px rgba(200,160,60,.18);
+}
+.ach-btn:hover{transform:translateY(-2px)}
+.ach-banner{
+  position:fixed;top:16px;left:50%;z-index:95;
+  transform:translate(-50%,-96px);
+  display:flex;align-items:center;gap:13px;
+  background:linear-gradient(135deg,#fffef7,#fff3d4);
+  border:1.5px solid #f0d78c;border-radius:18px;
+  padding:12px 22px 12px 15px;box-shadow:0 18px 44px rgba(160,120,40,.32);
+  opacity:0;pointer-events:none;
+  transition:transform .5s var(--ease),opacity .4s ease;
+}
+.ach-banner.show{transform:translate(-50%,0);opacity:1}
+.ach-banner .emo{font-size:31px;animation:achPop .7s cubic-bezier(.34,1.56,.64,1)}
+@keyframes achPop{0%{transform:scale(.3) rotate(-18deg)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+.ach-banner .t1{font-size:10.5px;font-weight:800;letter-spacing:2.5px;color:#b8892e}
+.ach-banner .t2{font-size:15.5px;font-weight:800;color:#6b4f12;margin-top:2px}
+.ach-banner .t3{font-size:11.5px;color:#9a7c3a;margin-top:1px}
+.ach-item{display:flex;gap:10px;align-items:center;background:#fff8ea;border:1px solid #f0e2bf;border-radius:15px;padding:10px 12px}
+.ach-item.locked{opacity:.6;filter:grayscale(.9);background:#f7f4ec;border-color:#e7e0d2}
+.ach-item .ae{font-size:23px;width:30px;text-align:center}
+.ach-item .an{font-size:12.5px;font-weight:800;color:#5a4318}
+.ach-item .ad{font-size:10.5px;color:#9a8a66;margin-top:2px;line-height:1.5}
+.ach-grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+@media (max-width:480px){.ach-grid2{grid-template-columns:1fr}}
+
 /* —— 页脚 —— */
 footer{margin-top:54px;text-align:center;color:#8fb2d4;font-size:12px;letter-spacing:.5px;line-height:2.2}
 footer button{
@@ -241,6 +274,7 @@ footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
       </div>
       <div class="ring-label"><b id="ringMsg">今日进度</b>坚持就是胜利 ✨</div>
     </div>
+    <button class="ach-btn" id="achBtn">🏆 成就</button>
   </div>
 
   <div class="stats">
@@ -417,6 +451,7 @@ footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
       toast('目标已添加，开始打卡吧 🚀');
     }
     save(); closeEdit(); render();
+    try { ACH.checkAll(); } catch (e) {}
   }
 
   /* ================= 打卡 ================= */
@@ -436,6 +471,7 @@ footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
       toast('打卡成功 ' + h.emoji + (s > 1 ? ' 已连续 ' + s + ' 天 🔥' : ' 好的开始！'));
       checkAllDone();
     }
+    try { ACH.onCheck(); } catch (e) {}
   }
   function checkAllDone(){
     if (!store.habits.length) return;
@@ -504,6 +540,7 @@ footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
         });
         save(); render();
         toast('已添加「' + parts[1] + '」，点击卡片打卡 ✅');
+        try { ACH.checkAll(); } catch (e) {}
       });
     });
   }
@@ -621,6 +658,7 @@ footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
         if (!p || !Array.isArray(p.habits)) throw new Error('bad');
         store = p; save(); render();
         toast('导入成功：' + p.habits.length + ' 个目标');
+        try { ACH.checkAll(); } catch (e) {}
       } catch (e) { toast('导入失败：文件格式不对呀'); }
     };
     r.readAsText(file);
@@ -635,6 +673,116 @@ footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
     toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2000);
   }
 
+  /* ================= 🏆 成就系统 ================= */
+  var ACH_KEY = 'daka_ach_v1';
+  var ACH_DEFS = [
+    { id: 'first_goal', emoji: '🌱', name: '启程', desc: '添加第一个目标' },
+    { id: 'total_10',   emoji: '📌', name: '小有积累', desc: '累计打卡 10 次' },
+    { id: 'total_100',  emoji: '💪', name: '百炼成钢', desc: '累计打卡 100 次' },
+    { id: 'streak_7',   emoji: '🔥', name: '七日之火', desc: '任一目标连续 7 天' },
+    { id: 'streak_30',  emoji: '🏔️', name: '三十天', desc: '任一目标连续 30 天' },
+    { id: 'full_day',   emoji: '🎯', name: '今日全勤', desc: '一天内完成全部目标' },
+    { id: 'habits_5',   emoji: '🧩', name: '多线作战', desc: '同时拥有 5 个目标' },
+    { id: 'early_bird', emoji: '🌅', name: '早起鸟', desc: '早上 8 点前完成打卡' },
+    { id: 'night_owl',  emoji: '🌙', name: '夜猫子', desc: '晚上 23 点后完成打卡' },
+    { id: 'colorful',   emoji: '🎨', name: '色彩收藏家', desc: '目标的主题色达到 4 种' }
+  ];
+  var ACH = (function () {
+    var st = { unlocked: {}, earlyBird: 0, nightOwl: 0 };
+    try {
+      var raw = localStorage.getItem(ACH_KEY);
+      if (raw) { var p = JSON.parse(raw); if (p && typeof p === 'object') { st = Object.assign(st, p); st.unlocked = p.unlocked || {}; } }
+    } catch (e) {}
+    function save() { try { localStorage.setItem(ACH_KEY, JSON.stringify(st)); } catch (e) {} }
+    function sumChecks() {
+      var n = 0;
+      store.habits.forEach(function (h) { for (var k in h.checks) if (h.checks[k]) n++; });
+      return n;
+    }
+    function maxStreak() {
+      var m = 0;
+      store.habits.forEach(function (h) { var s = habitStreak(h); if (s > m) m = s; });
+      return m;
+    }
+    function cond(id) {
+      switch (id) {
+        case 'first_goal': return store.habits.length >= 1;
+        case 'total_10': return sumChecks() >= 10;
+        case 'total_100': return sumChecks() >= 100;
+        case 'streak_7': return maxStreak() >= 7;
+        case 'streak_30': return maxStreak() >= 30;
+        case 'full_day':
+          return store.habits.length > 0 && store.habits.every(function (h) { return h.checks[TODAY]; });
+        case 'habits_5': return store.habits.length >= 5;
+        case 'early_bird': return st.earlyBird >= 1;
+        case 'night_owl': return st.nightOwl >= 1;
+        case 'colorful': {
+          var seen = {};
+          store.habits.forEach(function (h) { seen[h.color] = 1; });
+          return Object.keys(seen).length >= 4;
+        }
+      }
+      return false;
+    }
+    function unlockedCount() { return ACH_DEFS.filter(function (d) { return st.unlocked[d.id]; }).length; }
+    function refreshBtn() {
+      try { var b = $('achBtn'); if (b) b.textContent = '🏆 成就 ' + unlockedCount() + '/' + ACH_DEFS.length; } catch (e) {}
+    }
+    function banner(def) {
+      var el = document.getElementById('achBanner');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'achBanner'; el.className = 'ach-banner';
+        el.innerHTML = '<div class="emo"></div><div><div class="t1">🏆 成就解锁</div><div class="t2"></div><div class="t3"></div></div>';
+        document.body.appendChild(el);
+      }
+      el.querySelector('.emo').textContent = def.emoji;
+      el.querySelector('.t2').textContent = def.name;
+      el.querySelector('.t3').textContent = def.desc;
+      el.classList.add('show');
+      clearTimeout(banner._t);
+      banner._t = setTimeout(function () { el.classList.remove('show'); }, 3400);
+    }
+    function unlock(id) {
+      var def = ACH_DEFS.find(function (d) { return d.id === id; });
+      if (!def || st.unlocked[id]) return;
+      st.unlocked[id] = Date.now();
+      save(); refreshBtn(); banner(def);
+      try { toast('🏆 解锁成就「' + def.name + '」'); } catch (e) {}
+    }
+    function checkAll() { ACH_DEFS.forEach(function (d) { if (cond(d.id)) unlock(d.id); }); }
+    function onCheck() {
+      var hr = new Date().getHours();
+      if (hr < 8) st.earlyBird = 1;
+      if (hr >= 23) st.nightOwl = 1;
+      save(); checkAll();
+    }
+    function openPanel() {
+      var mask = document.getElementById('achMask');
+      if (!mask) {
+        mask = document.createElement('div');
+        mask.id = 'achMask'; mask.className = 'mask';
+        mask.innerHTML = '<div class="modal"><h3><span>🏆 我的成就</span><button id="achClose">✕</button></h3><div style="font-size:12px;color:#8a6f3e;margin-bottom:14px;line-height:1.7" id="achStats3"></div><div class="ach-grid2" id="achGrid2"></div></div>';
+        document.body.appendChild(mask);
+        mask.addEventListener('click', function (e) { if (e.target === mask) closePanel(); });
+        mask.querySelector('#achClose').addEventListener('click', closePanel);
+      }
+      $('achStats3').textContent = '已解锁 ' + unlockedCount() + ' / ' + ACH_DEFS.length + ' ｜ 累计打卡 ' + sumChecks() + ' 次 ｜ 最长连续 ' + maxStreak() + ' 天';
+      $('achGrid2').innerHTML = ACH_DEFS.map(function (d) {
+        var got = !!st.unlocked[d.id];
+        return '<div class="ach-item' + (got ? '' : ' locked') + '">' +
+          '<div class="ae">' + (got ? d.emoji : '🔒') + '</div>' +
+          '<div><div class="an">' + d.name + '</div><div class="ad">' + d.desc + (got ? ' · 已达成' : '') + '</div></div>' +
+          '</div>';
+      }).join('');
+      mask.classList.add('show');
+    }
+    function closePanel() { var m = document.getElementById('achMask'); if (m) m.classList.remove('show'); }
+    refreshBtn();
+    checkAll();
+    return { onCheck: onCheck, checkAll: checkAll, openPanel: openPanel, closePanel: closePanel };
+  })();
+
   /* ================= 事件绑定 ================= */
   buildPickers();
   $('editSave').addEventListener('click', saveEdit);
@@ -643,6 +791,7 @@ footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
   $('editMask').addEventListener('click', function(ev){ if (ev.target === this) closeEdit(); });
   $('detailMask').addEventListener('click', function(ev){ if (ev.target === this) $('detailMask').classList.remove('show'); });
   $('exportBtn').addEventListener('click', exportData);
+  $('achBtn').addEventListener('click', function () { try { ACH.openPanel(); } catch (e) {} });
   $('importBtn').addEventListener('click', function(){ $('importFile').click(); });
   $('importFile').addEventListener('change', function(ev){ if (ev.target.files[0]) importData(ev.target.files[0]); ev.target.value = ''; });
   $('editName').addEventListener('keydown', function(ev){ if (ev.key === 'Enter') saveEdit(); });
