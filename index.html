@@ -783,6 +783,8 @@ footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
       st.unlocked[id] = Date.now();
       save(); refreshBtn(); banner(def);
       try { toast('🏆 解锁成就「' + def.name + '」'); } catch (e) {}
+      /* v35：桥接跨站成就柜 */
+      try { if (window.STAch) window.STAch.unlock('daka.' + id, def.name, def.emoji); } catch (e) {}
     }
     function checkAll() { ACH_DEFS.forEach(function (d) { if (cond(d.id)) unlock(d.id); }); }
     function onCheck() {
@@ -812,10 +814,20 @@ footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
       mask.classList.add('show');
     }
     function closePanel() { var m = document.getElementById('achMask'); if (m) m.classList.remove('show'); }
+    /* v35：把已解锁的站内成就补桥到跨站成就柜（历史数据补记） */
+    function bridgeAll() {
+      ACH_DEFS.forEach(function (d) {
+        if (st.unlocked[d.id]) {
+          try { if (window.STAch) window.STAch.unlock('daka.' + d.id, d.name, d.emoji); } catch (e) {}
+        }
+      });
+    }
     refreshBtn();
     checkAll();
-    return { onCheck: onCheck, checkAll: checkAll, openPanel: openPanel, closePanel: closePanel };
+    return { onCheck: onCheck, checkAll: checkAll, openPanel: openPanel, closePanel: closePanel, bridgeAll: bridgeAll };
   })();
+  /* v35：STAch 就绪后补桥历史成就 */
+  setTimeout(function () { try { ACH.bridgeAll(); } catch (e) {} }, 1400);
 
   /* ================= 事件绑定 ================= */
   buildPickers();
