@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>打卡日程表 · 习惯养成小工具 · 星恬</title>
+<meta name="description" content="免费习惯打卡小工具：自定义目标（图标 + 主题色 + 每周目标），每天一键打卡，查看连续天数与月度日历。数据保存在浏览器本地，支持导出导入，离线可用。">
+<meta name="keywords" content="打卡,习惯打卡,打卡工具,日程表,习惯养成,每日打卡,免费打卡应用">
+<meta name="author" content="星恬">
+<link rel="canonical" href="https://daka.startian.top/">
+<meta name="theme-color" content="#E6F7FF">
+<meta property="og:site_name" content="星恬的小站">
+<meta property="og:title" content="打卡日程表 · 习惯养成小工具">
+<meta property="og:description" content="自定义目标、一键打卡、看连续天数与月度日历，数据只在本地。">
+<meta property="og:image" content="https://startian.top/demos/daka.jpg">
+<meta property="og:url" content="https://daka.startian.top/">
+<meta property="og:type" content="website">
+<script>
+/* ==== i18n-kit v1.2 begin ==== */
+/* ══════════════════════════════════════════════════════════
+   🌐 多语言 i18n Kit（startian.top 全站共享 · v1.2 · 2026-10-04）
+   · 语言：zh（默认）/ en；跨站同步 cookie st_lang(.startian.top) + localStorage 兜底
+   · 自动识别：首次访问按 navigator.language（zh 开头 → 中文，其余 → English）
+   · 两种接入模式（可混用）：
+     ① 短语表模式（推荐，低侵入）：I18N.phrase({ '中文原文': 'English', ... })
+        自动扫描文本节点 / title / placeholder / aria-label / alt，动态插入的文本也自动翻译
+     ② 标注模式：data-i18n / data-i18n-html / data-i18n-title / data-i18n-aria / data-i18n-ph / data-i18n-alt
+   · 子树上加 data-i18n-skip 可整体跳过（用户输入内容、ARG 谜题原文等）
+   · API：I18N.t(k[,vars]) · I18N.tOr(k,fb) · I18N.tr(原文) · I18N.set(lang) · I18N.lang()
+          · I18N.phrase(map) · I18N.scan(root) · I18N.apply(root) · I18N.onChange(fn)
+          · I18N.fmtDate(date[,{weekday:true}]) · I18N.fmtNum(n)
+   · 切换入口：固定右下角胶囊（本 Kit 自动注入，无需页面代码）
+   ══════════════════════════════════════════════════════════ */
+var I18N = (function () {
+  'use strict';
+  var LS = 'st_lang';
+  var FALLBACK = 'zh';
+  var lang = FALLBACK;
+  var dict = { zh: {}, en: {} };
+  var phrase = {};      /* 短语表：中文原文（归一化）→ 译文 */
+  var listeners = [];
+  var bd = {};          /* boot data：原文快照等 */
+
+  /* ---- 基础词典（全站通用词条） ---- */
+  dict.zh['common.home'] = '主页';
+  dict.en['common.home'] = 'Home';
+  dict.zh['common.homeTitle'] = '返回星恬的小站主页';
+  dict.en['common.homeTitle'] = "Back to Startian's homepage";
+  dict.zh['common.close'] = '关闭';
+  dict.en['common.close'] = 'Close';
+  dict.zh['common.cancel'] = '取消';
+  dict.en['common.cancel'] = 'Cancel';
+
+  /* ---- 存储与识别 ---- */
+  function norm(v) {
+    v = String(v || '').toLowerCase();
+    if (v.indexOf('zh') === 0) return 'zh';
+    if (v.indexOf('en') === 0) return 'en';
+    return null;
+  }
+  function readCookie() {
+    try { var m = document.cookie.match(/(?:^|;\s*)st_lang=([^;]*)/); return m ? decodeURIComponent(m[1]) : null; }
+    catch (e) { return null; }
+  }
+  function readLS() { try { return localStorage.getItem(LS); } catch (e) { return null; } }
+  function persist(v) {
+    try { localStorage.setItem(LS, v); } catch (e) {}
+    try { document.cookie = 'st_lang=' + encodeURIComponent(v) + ';domain=.startian.top;path=/;max-age=31536000;SameSite=Lax'; } catch (e) {}
+  }
+  function detect() {
+    var s = norm(readCookie()) || norm(readLS());
+    if (s) return s;
+    var n = norm(navigator.language || navigator.userLanguage);
+    return n || FALLBACK;
+  }
+
+  /* ---- 文案 ---- */
+  /* tRaw：查词典（当前语言 → zh 兜底），查不到返回 null（= 保持原文） */
+  function tRaw(key) {
+    var v = (dict[lang] && dict[lang][key] != null) ? dict[lang][key] : null;
+    if (v == null) v = (dict[FALLBACK] && dict[FALLBACK][key] != null) ? dict[FALLBACK][key] : null;
+    return v;
+  }
+  function t(key, vars) {
+    var v = tRaw(key);
+    if (v == null) return key;
+    if (vars) v = String(v).replace(/\{(\w+)\}/g, function (m, k) { return (vars[k] != null) ? vars[k] : m; });
+    return v;
+  }
+  /* tOr：查不到时用传入的兜底值（页面 JS 动态文案用这个） */
+  function tOr(key, fallback) {
+    var v = tRaw(key);
+    return (v == null) ? fallback : v;
+  }
+  function add(obj) {
+    if (!obj) return;
+    ['zh', 'en'].forEach(function (k) {
+      if (obj[k]) for (var key in obj[k]) dict[k][key] = obj[k][key];
+    });
+  }
+  /* tr：短语表直译（原文进，译文出；zh 侧原样返回）-JS 动态文案直接用 */
+  function tr(s) {
+    if (lang === 'zh') return s;
+    var v = lookup(normText(s));
+    return (v == null) ? s : v;
+  }
+  function addPhrase(map) {
+    if (!map) return;
+    for (var k in map) { if (map[k] != null) phrase[normText(k)] = String(map[k]); }
+  }
+  /* 规则表：[[/正则/, '替换（可用 $1）'], ...] - 处理「已复习 3」「12 天有记录」这类数字拼接 */
+  var rules = [];
+  function addRules(list) {
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) {
+      try {
+        var re = (list[i][0] instanceof RegExp) ? list[i][0] : new RegExp(list[i][0]);
+        rules.push([re, String(list[i][1])]);
+      } catch (e) {}
+    }
+  }
+  function lookup(t) {
+    var v = phrase[t];
+    if (v != null) return v;
+    for (var i = 0; i < rules.length; i++) {
+      try { if (rules[i][0].test(t)) return t.replace(rules[i][0], rules[i][1]); } catch (e) {}
+    }
+    return null;
+  }
+
+  /* ---- 短语表扫描（静态 + 动态） ---- */
+  function normText(s) { return String(s == null ? '' : s).replace(/\s+/g, ' ').trim(); }
+  var PTAGS = ['title', 'placeholder', 'aria-label', 'alt'];
+  function translText(node) {
+    var raw = node.nodeValue;
+    if (!raw) return;
+    var rec = node.__i18nR;
+    if (rec) {
+      if (lang === 'zh') {
+        if (raw === rec.en) { node.nodeValue = rec.orig; delete node.__i18nR; }
+        else if (raw !== rec.orig) { delete node.__i18nR; }
+        return;
+      }
+      if (raw === rec.en) return;
+      if (raw === rec.orig) { node.nodeValue = rec.en; return; }
+      delete node.__i18nR;
+    }
+    var out = lookup(normText(raw));
+    if (out == null) return;
+    if (lang === 'en') { if (raw !== out) { node.__i18nR = { orig: raw, en: out }; node.nodeValue = out; } }
+  }
+  function translAttrs(el) {
+    if (!el.getAttribute) return;
+    for (var i = 0; i < PTAGS.length; i++) {
+      var a = PTAGS[i], v = el.getAttribute(a);
+      if (v == null || v === '') continue;
+      var rec = el.__i18nA && el.__i18nA[a];
+      if (rec) {
+        if (lang === 'zh') {
+          if (v === rec.en) { el.setAttribute(a, rec.orig); delete el.__i18nA[a]; }
+          else if (v !== rec.orig) { delete el.__i18nA[a]; }
+          continue;
+        }
+        if (v === rec.en) continue;
+        if (v === rec.orig) { el.setAttribute(a, rec.en); continue; }
+        delete el.__i18nA[a];
+      }
+      var out = lookup(normText(v));
+      if (out == null) continue;
+      if (lang === 'en') {
+        if (v !== out) { if (!el.__i18nA) el.__i18nA = {}; el.__i18nA[a] = { orig: v, en: out }; el.setAttribute(a, out); }
+      }
+    }
+  }
+  function scanNode(node) {
+    if (!node) return;
+    if (node.nodeType === 9) node = node.documentElement || node.body;   /* 文档节点 → 转元素 */
+    if (!node) return;
+    if (node.nodeType === 3) { translText(node); return; }
+    if (node.nodeType !== 1) return;
+    var tag = node.tagName;
+    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'TEXTAREA' || tag === 'NOSCRIPT') return;
+    if (node.hasAttribute('data-i18n-skip')) return;
+    translAttrs(node);
+    for (var c = node.firstChild; c; c = c.nextSibling) scanNode(c);
+  }
+  function scan(root) { try { scanNode(root || document.body || document.documentElement); } catch (e) {} }
+  /* 动态内容自动翻译（MutationObserver，逐节点增量，无重扫） */
+  var moOn = false;
+  function auto(root) {
+    if (moOn || typeof MutationObserver === 'undefined') return;
+    var target = root || document.body;
+    if (!target) {   /* head 提前注入时 body 还没解析出来，等 DOM ready */
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { auto(root); });
+      return;
+    }
+    moOn = true;
+    try {
+      var mo = new MutationObserver(function (muts) {
+        for (var i = 0; i < muts.length; i++) {
+          var m = muts[i];
+          try {
+            if (m.type === 'characterData') translText(m.target);
+            else if (m.type === 'attributes') translAttrs(m.target);
+            else if (m.type === 'childList') {
+              for (var j = 0; j < m.addedNodes.length; j++) scanNode(m.addedNodes[j]);
+            }
+          } catch (e) {}
+        }
+      });
+      mo.observe(target, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: PTAGS });
+    } catch (e) {}
+  }
+
+  /* ---- 日期 / 数字 ---- */
+  var MN_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  var WD_ZH = '日一二三四五六';
+  var WD_EN = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  function fmtDate(d, opt) {
+    if (typeof d === 'string') { var a = d.split('-'); d = new Date(+a[0], (+a[1] || 1) - 1, +a[2] || 1); }
+    if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+    opt = opt || {};
+    var s;
+    if (lang === 'zh') {
+      s = d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日';
+      if (opt.weekday) s += ' · 星期' + WD_ZH.charAt(d.getDay());
+    } else {
+      s = MN_EN[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+      if (opt.weekday) s += ' · ' + WD_EN[d.getDay()];
+    }
+    return s;
+  }
+  function fmtNum(n) {
+    try { return Number(n).toLocaleString(lang === 'zh' ? 'zh-CN' : 'en-US'); }
+    catch (e) { return String(n); }
+  }
+
+  /* ---- DOM 标注应用（标注模式；词条缺失时恢复原文 - 保证切回中文能还原） ---- */
+  function apply(root) {
+    root = root || document;
+    try {
+      var i, list, v, el;
+      list = root.querySelectorAll('[data-i18n]');
+      for (i = 0; i < list.length; i++) {
+        el = list[i];
+        if (el.__i18nOrig == null) el.__i18nOrig = el.textContent;
+        v = tRaw(el.getAttribute('data-i18n'));
+        el.textContent = (v != null) ? v : el.__i18nOrig;
+      }
+      list = root.querySelectorAll('[data-i18n-html]');
+      for (i = 0; i < list.length; i++) {
+        el = list[i];
+        if (el.__i18nOrigHTML == null) el.__i18nOrigHTML = el.innerHTML;
+        v = tRaw(el.getAttribute('data-i18n-html'));
+        el.innerHTML = (v != null) ? v : el.__i18nOrigHTML;
+      }
+      list = root.querySelectorAll('[data-i18n-title]');
+      for (i = 0; i < list.length; i++) {
+        el = list[i];
+        if (el.__i18nOrigTitle == null) el.__i18nOrigTitle = el.title;
+        v = tRaw(el.getAttribute('data-i18n-title'));
+        el.title = (v != null) ? v : el.__i18nOrigTitle;
+      }
+      list = root.querySelectorAll('[data-i18n-aria]');
+      for (i = 0; i < list.length; i++) {
+        el = list[i];
+        if (el.__i18nOrigAria == null) el.__i18nOrigAria = el.getAttribute('aria-label') || '';
+        v = tRaw(el.getAttribute('data-i18n-aria'));
+        el.setAttribute('aria-label', (v != null) ? v : el.__i18nOrigAria);
+      }
+      list = root.querySelectorAll('[data-i18n-ph]');
+      for (i = 0; i < list.length; i++) {
+        el = list[i];
+        if (el.__i18nOrigPh == null) el.__i18nOrigPh = el.placeholder || '';
+        v = tRaw(el.getAttribute('data-i18n-ph'));
+        el.placeholder = (v != null) ? v : el.__i18nOrigPh;
+      }
+      list = root.querySelectorAll('[data-i18n-alt]');
+      for (i = 0; i < list.length; i++) {
+        el = list[i];
+        if (el.__i18nOrigAlt == null) el.__i18nOrigAlt = el.getAttribute('alt') || '';
+        v = tRaw(el.getAttribute('data-i18n-alt'));
+        el.setAttribute('alt', (v != null) ? v : el.__i18nOrigAlt);
+      }
+      /* 标题（短语表优先，其次 page.title 词条） */
+      if (!bd.__origTitle) bd.__origTitle = document.title;
+      var tv = lookup(normText(bd.__origTitle));
+      if (tv == null) tv = tRaw('page.title');
+      if (tv != null) { document.title = (lang === 'en') ? tv : bd.__origTitle; bd.__titleTouched = true; }
+      else if (bd.__titleTouched) { document.title = bd.__origTitle; }
+      document.documentElement.lang = (lang === 'zh') ? 'zh-CN' : 'en';
+      syncSwitch();
+    } catch (e) {}
+  }
+
+  function applyLang(v) {
+    lang = v;
+    persist(v);
+    apply(document);
+    scan(document);
+    for (var i = 0; i < listeners.length; i++) { try { listeners[i](lang); } catch (e) {} }
+    try {
+      var live = document.getElementById('i18n-live');
+      if (live) live.textContent = (lang === 'zh') ? '已切换到中文' : 'Switched to English';
+    } catch (e) {}
+  }
+  /* 切换转场（仿主页主题转场）：黑幕淡入 → 光晕从切换器扩散 → 幕中换语言 → 揭幕；可打断；尊重 reduced-motion */
+  var tid = 0, stage = null;
+  function ensureStage() {
+    if (stage) return stage;
+    var ov = document.createElement('div'); ov.className = 'i18n-veil';
+    var hl = document.createElement('div'); hl.className = 'i18n-halo';
+    var host = document.body || document.documentElement;
+    host.appendChild(ov); host.appendChild(hl);
+    stage = { ov: ov, hl: hl };
+    return stage;
+  }
+  function set(v) {
+    v = norm(v);
+    if (!v) return;
+    if (v === lang) { apply(document); scan(document); return; }
+    var calm = true;
+    try { calm = !(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); } catch (e) {}
+    if (!calm || !document.body) { applyLang(v); return; }
+    try {
+      var st = ensureStage(), my = ++tid;
+      var x = (window.innerWidth || 360) - 80, y = (window.innerHeight || 640) - 34;
+      try { if (swEl) { var r = swEl.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top + r.height / 2; } } catch (e) {}
+      st.ov.style.setProperty('--ix', x + 'px'); st.ov.style.setProperty('--iy', y + 'px');
+      st.hl.style.setProperty('--ix', x + 'px'); st.hl.style.setProperty('--iy', y + 'px');
+      st.ov.classList.remove('out'); st.ov.classList.add('on'); st.ov.style.display = 'block';
+      st.hl.classList.remove('go'); void st.hl.offsetWidth; st.hl.classList.add('go');
+      setTimeout(function () {
+        if (my !== tid) return;
+        applyLang(v);
+        st.ov.classList.remove('on'); st.ov.classList.add('out');
+        setTimeout(function () {
+          if (my !== tid) return;
+          st.ov.style.display = 'none'; st.ov.classList.remove('out');
+        }, 520);
+      }, 430);
+    } catch (e) { applyLang(v); }
+  }
+  function onChange(fn) { if (typeof fn === 'function') listeners.push(fn); }
+  function getLang() { return lang; }
+
+  /* ---- 切换入口（右下角胶囊，自动注入） ---- */
+  var SW_CSS = '.i18n-sw{position:fixed;right:14px;bottom:calc(14px + env(safe-area-inset-bottom,0px));z-index:9992;display:inline-flex;align-items:center;gap:2px;padding:3px;border-radius:999px;background:rgba(17,24,39,.74);-webkit-backdrop-filter:blur(10px) saturate(1.3);backdrop-filter:blur(10px) saturate(1.3);border:1px solid rgba(255,255,255,.26);box-shadow:0 6px 20px rgba(0,0,0,.28);font-family:inherit}' +
+    '.i18n-sw:hover{background:rgba(17,24,39,.86);border-color:rgba(255,255,255,.38)}' +
+    '.i18n-gl{font-size:13px;line-height:1;padding:0 5px 0 8px;opacity:.95;pointer-events:none}' +
+    '.i18n-sw button{border:0;background:transparent;color:rgba(255,255,255,.78);font-size:12px;font-weight:700;letter-spacing:.4px;padding:6px 11px;border-radius:999px;cursor:pointer;font-family:inherit;transition:all .18s ease;line-height:1}' +
+    '.i18n-sw button:hover{color:#fff;background:rgba(255,255,255,.12)}' +
+    '.i18n-sw button:focus-visible{outline:2px solid #7dd3fc;outline-offset:1px}' +
+    '.i18n-sw button.on{background:rgba(255,255,255,.92);color:#1f2937;box-shadow:0 2px 8px rgba(0,0,0,.25)}' +
+    '.i18n-sw button:active{transform:translateY(1px)}' +
+    '.i18n-veil{position:fixed;inset:0;z-index:9990;pointer-events:none;display:none;opacity:0;background:#060a16;transition:opacity .42s ease}' +
+    '.i18n-veil.on{opacity:1}' +
+    '.i18n-veil.out{opacity:0;transition:opacity .5s cubic-bezier(.2,.8,.3,1)}' +
+    '.i18n-halo{position:fixed;z-index:9991;left:var(--ix,92%);top:var(--iy,93%);width:14px;height:14px;border-radius:50%;box-sizing:border-box;pointer-events:none;display:none;border:2px solid rgba(198,226,255,.95);box-shadow:0 0 24px 6px rgba(137,194,255,.6),0 0 70px 20px rgba(137,194,255,.3),inset 0 0 20px rgba(198,226,255,.5)}' +
+    '.i18n-halo.go{display:block;animation:i18nHalo .85s cubic-bezier(.16,.7,.3,1) forwards}' +
+    '@keyframes i18nHalo{0%{opacity:0;transform:translate(-50%,-50%) scale(.01)}22%{opacity:1}100%{opacity:0;transform:translate(-50%,-50%) scale(58)}}' +
+    '.i18n-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
+    '@media (max-width:620px){.i18n-sw{right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px))}.i18n-sw button{padding:5px 9px;font-size:11.5px}}';
+
+  var swEl = null;
+  function buildSwitch() {
+    try {
+      if (!document.body) return;
+      var exist = document.querySelector('.i18n-sw');
+      if (exist) { swEl = exist; syncSwitch(); return; }
+      var st = document.createElement('style');
+      st.textContent = SW_CSS;
+      (document.head || document.documentElement).appendChild(st);
+      var wrap = document.createElement('div');
+      wrap.className = 'i18n-sw';
+      wrap.setAttribute('role', 'group');
+      wrap.setAttribute('aria-label', '切换语言 / Switch language');
+      wrap.setAttribute('title', '切换语言 / Switch language');
+      var gl = document.createElement('span');
+      gl.className = 'i18n-gl';
+      gl.textContent = '🌐';
+      gl.setAttribute('aria-hidden', 'true');
+      wrap.appendChild(gl);
+      [['zh', '中文'], ['en', 'English']].forEach(function (p) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.setAttribute('data-lang', p[0]);
+        b.textContent = p[1];
+        b.addEventListener('click', function () { set(p[0]); });
+        wrap.appendChild(b);
+      });
+      var live = document.createElement('span');
+      live.id = 'i18n-live';
+      live.className = 'i18n-sr';
+      live.setAttribute('aria-live', 'polite');
+      wrap.appendChild(live);
+      document.body.appendChild(wrap);
+      swEl = wrap;
+      syncSwitch();
+    } catch (e) {}
+  }
+  function syncSwitch() {
+    try {
+      if (!swEl) return;
+      var bs = swEl.querySelectorAll('button[data-lang]');
+      for (var i = 0; i < bs.length; i++) {
+        var on = bs[i].getAttribute('data-lang') === lang;
+        bs[i].classList.toggle('on', on);
+        bs[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
+    } catch (e) {}
+  }
+
+  /* ---- 启动 ---- */
+  lang = detect();
+  function boot() {
+    buildSwitch();
+    apply(document);
+    scan(document);
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+  return {
+    t: t, tOr: tOr, tr: tr, set: set, apply: apply, scan: scan, auto: auto,
+    phrase: addPhrase, rules: addRules, add: add, lang: getLang, onChange: onChange,
+    fmtDate: fmtDate, fmtNum: fmtNum
+  };
+})();
+
+/* ---- 短语表（中文原文 → English）---- */
+I18N.phrase({"打卡日程表 · 习惯养成小工具 · 星恬": "Habit Tracker · A little habit-building tool · Startian","🗓️ 打卡日程表": "🗓️ Habit Tracker","今日进度": "Today's progress","坚持就是胜利 ✨": "Consistency wins ✨","🏆 成就": "🏆 Achievements","最长连续": "Longest streak","天": " days","累计打卡": "Total check-ins","次": " times","我的目标": "My goals","个": "","数据只保存在你的浏览器里 · 支持离线使用": "Data is stored only in your browser · Works offline","⬇ 导出数据": "⬇ Export data","⬆ 导入数据": "⬆ Import data","添加新目标": "Add new goal","目标名称": "Goal name","选个图标": "Pick an icon","主题色": "Theme color","每周目标（天）": "Weekly target (days)","取消": "Cancel","保存": "Save","主页": "Home","比如：早点睡觉": "e.g. Go to bed early","返回星恬的小站主页": "Back to Startian's homepage","打卡日程表": "Habit Tracker","星恬": "Startian","编辑目标": "Edit goal","给目标起个名字吧 ✍️": "Give your goal a name ✍️","已更新 ✨": "Updated ✨","目标已添加，开始打卡吧 🚀": "Goal added — start checking in 🚀","打卡成功": "Checked in","已连续": " — ","天 🔥": " days in a row 🔥","好的开始！": "A good start!","今日全勤！太棒了 🎉🎉": "All done today! Awesome 🎉🎉","今日全勤 🎉": "All done today 🎉","<small>天</small>": "<small>days</small>","<small>次</small>": "<small>times</small>","<small>个</small>": "<small>goals</small>","<span class=\"plus\">＋</span>添加新目标": "<span class=\"plus\">＋</span>Add new goal","<h2>还没有目标，来种下第一颗吧</h2>": "<h2>No goals yet — plant your first one</h2>","<p>每天一点点，坚持会发光 ✨<br>点下面的模板一键添加，或自己创建</p>": "<p>A little every day — consistency shines ✨<br>Tap a template below to add one, or create your own</p>","<button class=\"preset\" data-p=\"🌙|早点睡觉|0|7\">🌙 早点睡觉</button>": "<button class=\"preset\" data-p=\"🌙|Go to bed early|0|7\">🌙 Go to bed early</button>","<button class=\"preset\" data-p=\"💧|多喝水|0|7\">💧 多喝水</button>": "<button class=\"preset\" data-p=\"💧|Drink more water|0|7\">💧 Drink more water</button>","<button class=\"preset\" data-p=\"🏃|运动 30 分钟|3|4\">🏃 运动 30 分钟</button>": "<button class=\"preset\" data-p=\"🏃|Exercise 30 min|3|4\">🏃 Exercise 30 min</button>","<button class=\"preset\" data-p=\"📖|阅读 20 分钟|4|5\">📖 阅读 20 分钟</button>": "<button class=\"preset\" data-p=\"📖|Read 20 min|4|5\">📖 Read 20 min</button>","<button class=\"preset\" data-p=\"🦷|早晚刷牙|6|7\">🦷 早晚刷牙</button>": "<button class=\"preset\" data-p=\"🦷|Brush teeth AM & PM|6|7\">🦷 Brush teeth AM & PM</button>","<button class=\"preset\" data-p=\"📵|睡前不玩手机|2|7\">📵 睡前不玩手机</button>": "<button class=\"preset\" data-p=\"📵|No phone before bed|2|7\">📵 No phone before bed</button>","已添加「": "Added “","」，点击卡片打卡 ✅": "” — tap the card to check in ✅","连续": "Streak ","天 ·": " days · ","<div class=\"week\">本周": "<div class=\"week\">This week ","天</div>": " days</div>","<button class=\"menu\" title=\"更多\">···</button>": "<button class=\"menu\" title=\"More\">···</button>","<h3><span>目标详情</span><button id=\"detailClose\">✕</button></h3>": "<h3><span>Goal details</span><button id=\"detailClose\">✕</button></h3>","<div class=\"m\">从": "<div class=\"m\">Since ","开始 · 每周目标": " · weekly target ","天</div></div>": " days</div></div>","</div><div class=\"k\">连续天数</div></div>": "</div><div class=\"k\">Day streak</div></div>","</div><div class=\"k\">累计打卡</div></div>": "</div><div class=\"k\">Total check-ins</div></div>","</div><div class=\"k\">本月完成</div></div>": "</div><div class=\"k\">This month</div></div>","<button class=\"btn btn-g\" id=\"detailEdit\">✏️ 编辑</button>": "<button class=\"btn btn-g\" id=\"detailEdit\">✏️ Edit</button>","<button class=\"btn btn-danger\" id=\"detailDel\">🗑 删除</button>": "<button class=\"btn btn-danger\" id=\"detailDel\">🗑 Delete</button>","确定删除「": "Delete “","」吗？打卡记录会一起消失哦": "”? Its check-in history will disappear too","已删除": "Deleted","打卡日程表-": "Habit Tracker-","已导出": "Exported ","个目标的数据": " goals' data","导入成功：": "Import complete: ","个目标": " goals","导入失败：文件格式不对呀": "Import failed: the file format is off","启程": "Getting Started","添加第一个目标": "Added your first goal","小有积累": "Small Pile","累计打卡 10 次": "10 total check-ins","百炼成钢": "Forged in Steel","累计打卡 100 次": "100 total check-ins","七日之火": "7-Day Fire","任一目标连续 7 天": "7-day streak on any goal","三十天": "Thirty Days","任一目标连续 30 天": "30-day streak on any goal","今日全勤": "Full Day","一天内完成全部目标": "Completed all goals in one day","多线作战": "Multi-Tasking","同时拥有 5 个目标": "5 goals at once","早起鸟": "Early Bird","早上 8 点前完成打卡": "Checked in before 8 AM","夜猫子": "Night Owl","晚上 23 点后完成打卡": "Checked in after 11 PM","色彩收藏家": "Color Collector","目标的主题色达到 4 种": "Goals with 4 different theme colors","<div class=\"emo\"></div><div><div class=\"t1\">🏆 成就解锁</div><div class=\"t2\"></div><div class=\"t3\"></div></div>": "<div class=\"emo\"></div><div><div class=\"t1\">🏆 Achievement unlocked</div><div class=\"t2\"></div><div class=\"t3\"></div></div>","🏆 解锁成就「": "🏆 Achievement unlocked: “","已解锁": "Unlocked ","｜ 累计打卡": " ｜ Total check-ins ","次 ｜ 最长连续": " times ｜ Longest streak ","· 已达成": " · Achieved","自律伊始": "Self-Discipline","🏆 成就解锁：": "🏆 Achievement unlocked: ","还没有目标，来种下第一颗吧": "No goals yet — plant your first one","每天一点点，坚持会发光 ✨": "A little every day — consistency shines ✨","点下面的模板一键添加，或自己创建": "Tap a template below to add one, or create your own","🌙 早点睡觉": "🌙 Go to bed early","💧 多喝水": "💧 Drink more water","🏃 运动 30 分钟": "🏃 Exercise 30 min","📖 阅读 20 分钟": "📖 Read 20 min","🦷 早晚刷牙": "🦷 Brush teeth AM & PM","📵 睡前不玩手机": "📵 No phone before bed","本周": "This week","目标详情": "Goal details","从": "Since ","连续天数": "Day streak","本月完成": "This month","月": "mo","✏️ 编辑": "✏️ Edit","🗑 删除": "🗑 Delete","🏆 成就解锁": "🏆 Achievement unlocked"});
+/* ---- 数字/日期拼接规则 ---- */
+I18N.rules([["^🏆 成就 (\\d+)/(\\d+)$", "🏆 Achievements $1/$2"], ["^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日 · 星期日$", "$1-$2-$3 · Sun"], ["^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日 · 星期一$", "$1-$2-$3 · Mon"], ["^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日 · 星期二$", "$1-$2-$3 · Tue"], ["^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日 · 星期三$", "$1-$2-$3 · Wed"], ["^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日 · 星期四$", "$1-$2-$3 · Thu"], ["^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日 · 星期五$", "$1-$2-$3 · Fri"], ["^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日 · 星期六$", "$1-$2-$3 · Sat"], ["^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日$", "$1-$2-$3"]]);
+I18N.auto();
+/* ==== i18n-kit v1.2 end ==== */
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  "name": "打卡日程表",
+  "url": "https://daka.startian.top/",
+  "applicationCategory": "ProductivityApplication",
+  "operatingSystem": "Web",
+  "inLanguage": "zh-CN",
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CNY"},
+  "author": {"@type": "Person", "name": "星恬", "url": "https://startian.top/"}
+}
+</script>
+<link rel="icon" href="favicon.ico" sizes="any">
+<style>
+:root{
+  --bg1:#eef8ff; --bg2:#d9edff;
+  --card:#ffffff; --line:#d5e9fb;
+  --ink:#1f3c5e; --ink2:#54759a; --ink3:#93b4d4;
+  --accent:#66a9f0; --deep:#3f86d1;
+  --ease:cubic-bezier(.22,.9,.28,1);
+  --sh:0 1px 2px rgba(76,116,164,.06), 0 10px 28px rgba(120,160,210,.13);
+  --sh-lg:0 2px 4px rgba(76,116,164,.08), 0 24px 50px rgba(110,155,210,.24);
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html{scroll-behavior:smooth}
+body{
+  min-height:100vh;
+  background:radial-gradient(1200px 600px at 50% -100px, #fbfdff 0%, var(--bg1) 45%, var(--bg2) 100%);
+  color:var(--ink);
+  font-family:-apple-system,'Segoe UI','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+  padding:26px 16px 90px;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{width:100%;max-width:760px;margin:0 auto}
+
+/* —— 顶栏 —— */
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:8px}
+.title-block h1{font-size:23px;font-weight:800;letter-spacing:.5px}
+.title-block .date{font-size:12.5px;color:var(--ink2);margin-top:5px;letter-spacing:.6px}
+.ring-wrap{display:flex;align-items:center;gap:12px}
+.ring{position:relative;width:64px;height:64px}
+.ring svg{transform:rotate(-90deg)}
+.ring .bgc{fill:none;stroke:#e2f1fd;stroke-width:7}
+.ring .fgc{fill:none;stroke:url(#ringGrad);stroke-width:7;stroke-linecap:round;transition:stroke-dasharray .7s var(--ease)}
+.ring .num{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;color:var(--deep)}
+.ring-label{font-size:12px;color:var(--ink2);line-height:1.6}
+.ring-label b{display:block;font-size:13.5px;color:var(--ink)}
+
+/* —— 统计条 —— */
+.stats{
+  display:flex;gap:10px;margin:16px 0 26px;flex-wrap:wrap;
+}
+.stat{
+  flex:1;min-width:100px;background:var(--card);border:1px solid var(--line);border-radius:16px;
+  padding:12px 14px;box-shadow:var(--sh);
+}
+.stat .k{font-size:11px;color:var(--ink3);letter-spacing:1px;font-weight:700}
+.stat .v{font-size:19px;font-weight:800;margin-top:4px;color:var(--deep)}
+.stat .v small{font-size:11px;color:var(--ink3);font-weight:700;margin-left:3px}
+
+/* —— 习惯网格 —— */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:14px}
+.habit{
+  position:relative;cursor:pointer;border-radius:22px;padding:17px 17px 15px;
+  background:var(--card);border:1.5px solid var(--line);box-shadow:var(--sh);
+  transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .3s ease,background .3s ease;
+  user-select:none;overflow:hidden;
+}
+.habit:hover{transform:translateY(-3px);box-shadow:var(--sh-lg)}
+.habit:active{transform:translateY(-1px) scale(.99)}
+.habit.done{border-color:var(--hc);background:linear-gradient(160deg,#ffffff 20%, var(--hc-soft) 130%)}
+.habit.pop{animation:pop .5s var(--ease)}
+@keyframes pop{0%{transform:scale(1)}35%{transform:scale(1.04)}70%{transform:scale(.99)}100%{transform:scale(1)}}
+.habit .top{display:flex;align-items:center;gap:11px}
+.habit .emoji{
+  width:50px;height:50px;border-radius:16px;display:flex;align-items:center;justify-content:center;
+  font-size:26px;background:var(--hc-soft);box-shadow:inset 0 0 0 1px rgba(255,255,255,.7);
+  transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+.habit:hover .emoji{transform:scale(1.1) rotate(-6deg)}
+.habit .name{font-weight:800;font-size:14.5px;line-height:1.35}
+.habit .meta{font-size:11px;color:var(--ink2);margin-top:4px;letter-spacing:.3px}
+.habit .bars{display:flex;gap:4px;margin-top:13px}
+.habit .bar{flex:1;height:6px;border-radius:4px;background:#e8f3fd;transition:background .35s ease}
+.habit .bar.on{background:var(--hc)}
+.habit .week{font-size:10.5px;color:var(--ink3);margin-top:7px;letter-spacing:.4px}
+.habit .badge{
+  position:absolute;top:13px;right:13px;width:26px;height:26px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;
+  background:var(--hc);box-shadow:0 4px 10px rgba(80,130,190,.35);
+  opacity:0;transform:scale(.3);transition:opacity .25s ease,transform .35s cubic-bezier(.34,1.56,.64,1);
+}
+.habit.done .badge{opacity:1;transform:scale(1)}
+.habit .menu{
+  position:absolute;bottom:12px;right:12px;width:28px;height:28px;border-radius:9px;border:none;cursor:pointer;
+  background:#eef7ff;color:var(--ink2);font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;
+  opacity:0;transition:opacity .2s ease,background .2s ease;
+}
+.habit:hover .menu,.habit .menu:focus{opacity:1}
+.habit .menu:hover{background:#ddeefc}
+
+/* —— 添加卡 —— */
+.add-card{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:150px;
+  border-radius:22px;border:1.7px dashed #bcd9f4;color:#7ba6cf;cursor:pointer;background:rgba(255,255,255,.5);
+  font-weight:800;font-size:14px;letter-spacing:1px;
+  transition:transform .2s var(--ease),border-color .2s ease,background .2s ease;
+}
+.add-card:hover{transform:translateY(-3px);border-color:#8fc0ec;background:#f4faff;color:var(--deep)}
+.add-card .plus{font-size:30px;font-weight:400;line-height:1}
+
+/* —— 空状态 —— */
+.empty{text-align:center;padding:38px 16px 26px}
+.empty .big{font-size:52px}
+.empty h2{font-size:17px;margin-top:14px;font-weight:800}
+.empty p{font-size:13px;color:var(--ink2);margin-top:8px;line-height:1.9}
+.presets{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin-top:20px}
+.preset{
+  border:1px solid #cfe6fa;background:#fff;border-radius:999px;padding:9px 16px;font-size:13px;font-weight:700;
+  color:#44709f;cursor:pointer;font-family:inherit;transition:all .2s var(--ease);
+}
+.preset:hover{transform:translateY(-2px);border-color:#a6d1f8;box-shadow:0 10px 22px rgba(120,160,210,.16)}
+
+/* —— 弹层通用 —— */
+.mask{
+  position:fixed;inset:0;background:rgba(31,60,94,.32);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  z-index:60;display:flex;align-items:center;justify-content:center;padding:20px;
+  opacity:0;pointer-events:none;transition:opacity .3s ease;
+}
+.mask.show{opacity:1;pointer-events:auto}
+.modal{
+  width:100%;max-width:460px;max-height:86vh;overflow-y:auto;
+  background:#fff;border-radius:24px;padding:24px;box-shadow:0 30px 80px rgba(31,60,94,.35);
+  transform:translateY(22px) scale(.98);transition:transform .35s var(--ease);
+}
+.mask.show .modal{transform:translateY(0) scale(1)}
+.modal h3{font-size:17px;font-weight:800;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.modal h3 button{border:none;background:#eef7ff;border-radius:10px;width:30px;height:30px;font-size:15px;color:var(--ink2);cursor:pointer}
+.field{margin-bottom:15px}
+.field .lab{font-size:12px;font-weight:800;color:var(--ink2);letter-spacing:1px;margin-bottom:8px}
+.inp{
+  width:100%;border:1.5px solid var(--line);border-radius:14px;padding:11px 14px;font-size:14.5px;
+  font-family:inherit;color:var(--ink);outline:none;background:#fbfdff;transition:border-color .2s ease;
+}
+.inp:focus{border-color:#8fc0ec}
+.emoji-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;max-height:168px;overflow-y:auto;padding:4px}
+.emoji-grid button{
+  aspect-ratio:1;border:1.5px solid transparent;border-radius:12px;background:#f6fbff;font-size:19px;
+  cursor:pointer;transition:all .15s ease;
+}
+.emoji-grid button:hover{background:#e8f4ff;transform:scale(1.08)}
+.emoji-grid button.sel{border-color:var(--deep);background:#e4f2ff;transform:scale(1.06)}
+.colors{display:flex;gap:9px;flex-wrap:wrap}
+.colors button{width:32px;height:32px;border-radius:50%;border:3px solid #fff;cursor:pointer;box-shadow:0 0 0 1.5px #dbeaf8;transition:transform .15s ease}
+.colors button.sel{transform:scale(1.18);box-shadow:0 0 0 2px var(--deep)}
+.target-row{display:flex;gap:8px}
+.target-row button{
+  flex:1;padding:9px 0;border-radius:12px;border:1.5px solid var(--line);background:#fbfdff;
+  font-weight:800;font-size:13.5px;color:var(--ink2);cursor:pointer;font-family:inherit;transition:all .15s ease;
+}
+.target-row button.sel{border-color:var(--deep);background:#e8f4ff;color:var(--deep)}
+.modal-actions{display:flex;gap:10px;margin-top:20px}
+.btn{
+  flex:1;padding:12px 0;border-radius:14px;border:none;font-size:14.5px;font-weight:800;cursor:pointer;font-family:inherit;
+  transition:transform .15s ease,box-shadow .15s ease;
+}
+.btn-p{background:linear-gradient(180deg,#8fc5fb,#5ea3ee);color:#fff;box-shadow:0 4px 0 #4683c4}
+.btn-p:active{transform:translateY(2px);box-shadow:0 2px 0 #4683c4}
+.btn-g{background:#eef7ff;color:var(--ink2)}
+.btn-danger{background:#ffecef;color:#d4546c}
+
+/* —— 详情：日历 —— */
+.detail-head{display:flex;align-items:center;gap:13px;margin-bottom:16px}
+.detail-head .emoji{width:54px;height:54px;border-radius:17px;font-size:28px;display:flex;align-items:center;justify-content:center}
+.detail-head .n{font-size:17px;font-weight:800}
+.detail-head .m{font-size:12px;color:var(--ink2);margin-top:4px}
+.d-stats{display:flex;gap:8px;margin-bottom:16px}
+.d-stat{flex:1;background:#f6fbff;border-radius:14px;padding:10px;text-align:center}
+.d-stat .v{font-size:17px;font-weight:800;color:var(--deep)}
+.d-stat .k{font-size:10.5px;color:var(--ink3);margin-top:3px;font-weight:700;letter-spacing:.8px}
+.cal-head{display:flex;align-items:center;justify-content:space-between;margin:6px 0 10px}
+.cal-head b{font-size:14px}
+.cal-head button{border:none;background:#eef7ff;border-radius:10px;width:30px;height:30px;cursor:pointer;color:var(--ink2);font-size:14px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:5px}
+.cal .wd{text-align:center;font-size:10.5px;color:var(--ink3);font-weight:800;padding:4px 0}
+.cal .d{
+  aspect-ratio:1;border-radius:10px;display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:700;color:var(--ink2);background:#f6fbff;
+}
+.cal .d.on{background:var(--hc);color:#fff;box-shadow:0 3px 8px rgba(80,130,190,.28)}
+.cal .d.today{box-shadow:inset 0 0 0 2px var(--deep)}
+.cal .d.on.today{box-shadow:inset 0 0 0 2px #fff,0 3px 8px rgba(80,130,190,.28)}
+.cal .d.future{opacity:.35}
+.cal .d.blank{background:transparent}
+
+/* —— 提示 —— */
+.toast{
+  position:fixed;left:50%;bottom:30px;z-index:90;transform:translateX(-50%) translateY(16px);
+  background:rgba(31,60,94,.95);color:#fff;padding:10px 20px;border-radius:999px;
+  font-size:13.5px;letter-spacing:.5px;opacity:0;pointer-events:none;
+  transition:opacity .35s var(--ease),transform .35s var(--ease);
+  box-shadow:0 12px 30px rgba(31,60,94,.35);
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* —— 🏆 成就 —— */
+.ach-btn{
+  border:1px solid #e8d9a8;background:linear-gradient(180deg,#fffdf4,#fff5da);
+  color:#9a7c3a;font-weight:800;font-size:13px;padding:9px 16px;border-radius:999px;
+  cursor:pointer;font-family:inherit;letter-spacing:.5px;
+  transition:transform .2s var(--ease),box-shadow .2s ease;
+  box-shadow:0 8px 18px rgba(200,160,60,.18);
+}
+.ach-btn:hover{transform:translateY(-2px)}
+.ach-banner{
+  position:fixed;top:16px;left:50%;z-index:95;
+  transform:translate(-50%,-96px);
+  display:flex;align-items:center;gap:13px;
+  background:linear-gradient(135deg,#fffef7,#fff3d4);
+  border:1.5px solid #f0d78c;border-radius:18px;
+  padding:12px 22px 12px 15px;box-shadow:0 18px 44px rgba(160,120,40,.32);
+  opacity:0;pointer-events:none;
+  transition:transform .5s var(--ease),opacity .4s ease;
+}
+.ach-banner.show{transform:translate(-50%,0);opacity:1}
+.ach-banner .emo{font-size:31px;animation:achPop .7s cubic-bezier(.34,1.56,.64,1)}
+@keyframes achPop{0%{transform:scale(.3) rotate(-18deg)}60%{transform:scale(1.18)}100%{transform:scale(1)}}
+.ach-banner .t1{font-size:10.5px;font-weight:800;letter-spacing:2.5px;color:#b8892e}
+.ach-banner .t2{font-size:15.5px;font-weight:800;color:#6b4f12;margin-top:2px}
+.ach-banner .t3{font-size:11.5px;color:#9a7c3a;margin-top:1px}
+.ach-item{display:flex;gap:10px;align-items:center;background:#fff8ea;border:1px solid #f0e2bf;border-radius:15px;padding:10px 12px}
+.ach-item.locked{opacity:.6;filter:grayscale(.9);background:#f7f4ec;border-color:#e7e0d2}
+.ach-item .ae{font-size:23px;width:30px;text-align:center}
+.ach-item .an{font-size:12.5px;font-weight:800;color:#5a4318}
+.ach-item .ad{font-size:10.5px;color:#9a8a66;margin-top:2px;line-height:1.5}
+.ach-grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+@media (max-width:480px){.ach-grid2{grid-template-columns:1fr}}
+
+/* —— 页脚 —— */
+footer{margin-top:54px;text-align:center;color:#8fb2d4;font-size:12px;letter-spacing:.5px;line-height:2.2}
+footer button{
+  border:1px solid #cfe6fa;background:#fff;border-radius:999px;padding:7px 15px;margin:0 4px;
+  font-size:12px;font-weight:700;color:#44709f;cursor:pointer;font-family:inherit;transition:all .2s ease;
+}
+footer button:hover{border-color:#a6d1f8;transform:translateY(-1px)}
+
+@media (max-width:480px){
+  body{padding:20px 13px 80px}
+  .title-block h1{font-size:20px}
+  .grid{grid-template-columns:repeat(2,1fr);gap:11px}
+  .habit{padding:14px 13px 12px;border-radius:19px}
+  .habit .emoji{width:44px;height:44px;font-size:23px;border-radius:14px}
+  .habit .name{font-size:13.5px}
+  .emoji-grid{grid-template-columns:repeat(7,1fr)}
+  .modal{padding:20px;border-radius:22px}
+}
+/* —— 返回主页（全站统一 · 2026-09-29）—— */
+.wb-home{position:fixed;left:14px;bottom:14px;z-index:9990;display:inline-flex;align-items:center;gap:5px;
+  padding:8px 13px 8px 10px;border-radius:999px;text-decoration:none;
+  background:rgba(17,24,39,.55);color:#fff;font-size:12.5px;font-weight:600;letter-spacing:.3px;
+  -webkit-backdrop-filter:blur(10px) saturate(1.3);backdrop-filter:blur(10px) saturate(1.3);
+  border:1px solid rgba(255,255,255,.14);box-shadow:0 6px 18px rgba(0,0,0,.18);
+  transition:background .2s,transform .2s,box-shadow .2s}
+.wb-home:hover{background:rgba(17,24,39,.78);transform:translateY(-1px);box-shadow:0 10px 24px rgba(0,0,0,.26)}
+.wb-home:active{transform:translateY(0)}
+.wb-home svg{width:13px;height:13px;flex:0 0 auto}
+@media (max-width:620px){ .wb-home{left:10px;bottom:10px;padding:7px 11px 7px 9px;font-size:12px} }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0" stop-color="#8fc5fb"/><stop offset="1" stop-color="#4f93d8"/>
+  </linearGradient>
+</defs></svg>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="title-block">
+      <h1>🗓️ 打卡日程表</h1>
+      <div class="date" id="todayLabel"></div>
+    </div>
+    <div class="ring-wrap">
+      <div class="ring">
+        <svg width="64" height="64" viewBox="0 0 64 64">
+          <circle class="bgc" cx="32" cy="32" r="26"></circle>
+          <circle class="fgc" id="ringFg" cx="32" cy="32" r="26" stroke-dasharray="0 163.4"></circle>
+        </svg>
+        <div class="num" id="ringNum">0/0</div>
+      </div>
+      <div class="ring-label"><b id="ringMsg">今日进度</b>坚持就是胜利 ✨</div>
+    </div>
+    <button class="ach-btn" id="achBtn">🏆 成就</button>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">最长连续</div><div class="v" id="statStreak">0<small>天</small></div></div>
+    <div class="stat"><div class="k">累计打卡</div><div class="v" id="statTotal">0<small>次</small></div></div>
+    <div class="stat"><div class="k">我的目标</div><div class="v" id="statHabits">0<small>个</small></div></div>
+  </div>
+
+  <div id="mainArea"></div>
+
+  <footer>
+    数据只保存在你的浏览器里 · 支持离线使用<br>
+    <button id="exportBtn">⬇ 导出数据</button>
+    <button id="importBtn">⬆ 导入数据</button>
+    <input type="file" id="importFile" accept=".json,application/json" style="display:none">
+  </footer>
+</div>
+
+<!-- 添加/编辑弹层 -->
+<div class="mask" id="editMask">
+  <div class="modal">
+    <h3><span id="editTitle">添加新目标</span><button id="editClose">✕</button></h3>
+    <div class="field">
+      <div class="lab">目标名称</div>
+      <input class="inp" id="editName" maxlength="12" placeholder="比如：早点睡觉">
+    </div>
+    <div class="field">
+      <div class="lab">选个图标</div>
+      <div class="emoji-grid" id="emojiGrid"></div>
+    </div>
+    <div class="field">
+      <div class="lab">主题色</div>
+      <div class="colors" id="colorRow"></div>
+    </div>
+    <div class="field">
+      <div class="lab">每周目标（天）</div>
+      <div class="target-row" id="targetRow"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-g" id="editCancel">取消</button>
+      <button class="btn btn-p" id="editSave">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 详情弹层 -->
+<div class="mask" id="detailMask">
+  <div class="modal" id="detailModal"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  'use strict';
+  /* ================= 基础工具 ================= */
+  var $ = function(id){ return document.getElementById(id); };
+  var pad = function(n){ return (n < 10 ? '0' : '') + n; };
+  var dateKey = function(d){ return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); };
+  var today = new Date();
+  var TODAY = dateKey(today);
+  var WD = ['日','一','二','三','四','五','六'];
+
+  /* ================= 数据层 ================= */
+  var KEY = 'daka_v1';
+  var store = { habits: [] };
+  try {
+    var raw = localStorage.getItem(KEY);
+    if (raw) { var p = JSON.parse(raw); if (p && Array.isArray(p.habits)) store = p; }
+  } catch (e) {}
+  function save(){
+    try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {}
+  }
+  function uid(){ return 'h' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+  var EMOJIS = ['🌙','😴','☀️','⏰','🚰','💧','🥛','☕','🍵','🏃','🚶','🚴','🏊','🧘','🤸','🏋️','⚽','🏀','🎾','🧗','📖','📚','✏️','📝','💻','🎨','🎵','🎹','🧩','🍎','🥗','🍚','🍳','🥦','🍊','💊','🦷','🛁','🧴','💄','💅','😊','🫶','📵','🧹','🧺','🪴','🌸','🌳','🐱','🐶','🐟','🛌','⭐','🎯','🔥','🗓️','📷','🎬','🧠','🎁'];
+  var COLORS = [
+    {c:'#66a9f0', s:'#e4f2ff'}, {c:'#f08bab', s:'#ffe9f0'}, {c:'#f0a860', s:'#ffefe0'},
+    {c:'#58c08f', s:'#e2f8ee'}, {c:'#9b8cf0', s:'#efeaff'}, {c:'#e6b84d', s:'#fff6dd'},
+    {c:'#4fc0c0', s:'#e2f8f8'}, {c:'#ef7d7d', s:'#ffe7e7'}
+  ];
+
+  /* ================= 统计计算 ================= */
+  function habitStreak(h){
+    var d = new Date(); var streak = 0;
+    if (!h.checks[dateKey(d)]) d.setDate(d.getDate() - 1);
+    while (h.checks[dateKey(d)]) { streak++; d.setDate(d.getDate() - 1); }
+    return streak;
+  }
+  function habitTotal(h){
+    var n = 0; for (var k in h.checks) if (h.checks[k]) n++;
+    return n;
+  }
+  function weekDates(){
+    var d = new Date(); var wd = (d.getDay() + 6) % 7; // 周一=0
+    d.setDate(d.getDate() - wd);
+    var out = [];
+    for (var i = 0; i < 7; i++) { out.push(dateKey(d)); d.setDate(d.getDate() + 1); }
+    return out;
+  }
+  function habitWeekCount(h){
+    var days = weekDates(), n = 0;
+    for (var i = 0; i < days.length; i++) if (h.checks[days[i]]) n++;
+    return n;
+  }
+
+  /* ================= 图标 / 颜色 / 目标 选择器 ================= */
+  var editState = { id: null, emoji: '🌙', color: 0, target: 7 };
+  function buildPickers(){
+    var g = $('emojiGrid'); g.innerHTML = '';
+    EMOJIS.forEach(function(e){
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = e;
+      b.dataset.emoji = e;
+      b.addEventListener('click', function(){
+        editState.emoji = e;
+        g.querySelectorAll('button').forEach(function(x){ x.classList.toggle('sel', x.dataset.emoji === e); });
+      });
+      g.appendChild(b);
+    });
+    var cr = $('colorRow'); cr.innerHTML = '';
+    COLORS.forEach(function(col, i){
+      var b = document.createElement('button'); b.type = 'button';
+      b.style.background = col.c; b.dataset.i = i;
+      b.addEventListener('click', function(){
+        editState.color = i;
+        cr.querySelectorAll('button').forEach(function(x){ x.classList.toggle('sel', +x.dataset.i === i); });
+      });
+      cr.appendChild(b);
+    });
+    var tr = $('targetRow'); tr.innerHTML = '';
+    [1,2,3,4,5,6,7].forEach(function(n){
+      var b = document.createElement('button'); b.type = 'button'; b.textContent = n;
+      b.dataset.n = n;
+      b.addEventListener('click', function(){
+        editState.target = n;
+        tr.querySelectorAll('button').forEach(function(x){ x.classList.toggle('sel', +x.dataset.n === n); });
+      });
+      tr.appendChild(b);
+    });
+  }
+  function syncPickers(){
+    $('emojiGrid').querySelectorAll('button').forEach(function(x){ x.classList.toggle('sel', x.dataset.emoji === editState.emoji); });
+    $('colorRow').querySelectorAll('button').forEach(function(x){ x.classList.toggle('sel', +x.dataset.i === editState.color); });
+    $('targetRow').querySelectorAll('button').forEach(function(x){ x.classList.toggle('sel', +x.dataset.n === editState.target); });
+  }
+  function openEdit(h){
+    if (h) {
+      editState = { id: h.id, emoji: h.emoji, color: h.color, target: h.target };
+      $('editTitle').textContent = '编辑目标';
+    } else {
+      editState = { id: null, emoji: '🌙', color: 0, target: 7 };
+      $('editTitle').textContent = '添加新目标';
+    }
+    $('editName').value = h ? h.name : '';
+    syncPickers();
+    $('editMask').classList.add('show');
+    setTimeout(function(){ if (!h) $('editName').focus(); }, 250);
+  }
+  function closeEdit(){ $('editMask').classList.remove('show'); }
+
+  function saveEdit(){
+    var name = $('editName').value.trim();
+    if (!name) { toast('给目标起个名字吧 ✍️'); $('editName').focus(); return; }
+    var col = COLORS[editState.color];
+    if (editState.id) {
+      var h = store.habits.find(function(x){ return x.id === editState.id; });
+      if (h) { h.name = name; h.emoji = editState.emoji; h.color = editState.color; h.target = editState.target; }
+      toast('已更新 ✨');
+    } else {
+      store.habits.push({
+        id: uid(), name: name, emoji: editState.emoji, color: editState.color,
+        target: editState.target, created: TODAY, checks: {}
+      });
+      toast('目标已添加，开始打卡吧 🚀');
+    }
+    save(); closeEdit(); render();
+    try { ACH.checkAll(); } catch (e) {}
+  }
+
+  /* ================= 打卡 ================= */
+  function toggleCheck(id){
+    var h = store.habits.find(function(x){ return x.id === id; });
+    if (!h) return;
+    if (h.checks[TODAY]) { delete h.checks[TODAY]; }
+    else { h.checks[TODAY] = 1; }
+    save(); render();
+    var card = document.querySelector('.habit[data-id="' + id + '"]');
+    if (card) {
+      card.classList.add('pop');
+      setTimeout(function(){ card.classList.remove('pop'); }, 520);
+    }
+    if (h.checks[TODAY]) {
+      var s = habitStreak(h);
+      toast('打卡成功 ' + h.emoji + (s > 1 ? ' 已连续 ' + s + ' 天 🔥' : ' 好的开始！'));
+      checkAllDone();
+    }
+    try { ACH.onCheck(); } catch (e) {}
+  }
+  function checkAllDone(){
+    if (!store.habits.length) return;
+    var done = store.habits.filter(function(h){ return h.checks[TODAY]; }).length;
+    if (done === store.habits.length && done > 0) {
+      setTimeout(function(){ toast('今日全勤！太棒了 🎉🎉'); }, 900);
+    }
+  }
+
+  /* ================= 渲染 ================= */
+  function render(){
+    var d = new Date();
+    $('todayLabel').textContent = (I18N.lang() === 'en') ? I18N.fmtDate(d, { weekday: true }) : (d.getFullYear() + ' 年 ' + (d.getMonth() + 1) + ' 月 ' + d.getDate() + ' 日 · 星期' + WD[d.getDay()]);
+
+    var totalHabits = store.habits.length;
+    var doneToday = store.habits.filter(function(h){ return h.checks[TODAY]; }).length;
+    var pct = totalHabits ? doneToday / totalHabits : 0;
+    var C = 2 * Math.PI * 26;
+    $('ringFg').setAttribute('stroke-dasharray', (pct * C).toFixed(1) + ' ' + C.toFixed(1));
+    $('ringNum').textContent = doneToday + '/' + totalHabits;
+    $('ringMsg').textContent = totalHabits === 0 ? '今日进度' : (doneToday === totalHabits ? '今日全勤 🎉' : '今日进度');
+
+    var bestStreak = 0, totalChecks = 0;
+    store.habits.forEach(function(h){
+      var s = habitStreak(h); if (s > bestStreak) bestStreak = s;
+      totalChecks += habitTotal(h);
+    });
+    $('statStreak').innerHTML = bestStreak + '<small>天</small>';
+    $('statTotal').innerHTML = totalChecks + '<small>次</small>';
+    $('statHabits').innerHTML = totalHabits + '<small>个</small>';
+
+    var area = $('mainArea');
+    if (!totalHabits) { area.innerHTML = renderEmpty(); bindEmpty(); return; }
+    area.innerHTML = '<div class="grid" id="grid"></div>';
+    var grid = $('grid');
+    store.habits.forEach(function(h){ grid.appendChild(buildCard(h)); });
+    var add = document.createElement('div');
+    add.className = 'add-card'; add.id = 'addCard';
+    add.innerHTML = '<span class="plus">＋</span>添加新目标';
+    add.addEventListener('click', function(){ openEdit(null); });
+    grid.appendChild(add);
+  }
+  function renderEmpty(){
+    return '' +
+      '<div class="empty">' +
+      '  <div class="big">🌱</div>' +
+      '  <h2>还没有目标，来种下第一颗吧</h2>' +
+      '  <p>每天一点点，坚持会发光 ✨<br>点下面的模板一键添加，或自己创建</p>' +
+      '  <div class="presets">' +
+      '    <button class="preset" data-p="🌙|早点睡觉|0|7">🌙 早点睡觉</button>' +
+      '    <button class="preset" data-p="💧|多喝水|0|7">💧 多喝水</button>' +
+      '    <button class="preset" data-p="🏃|运动 30 分钟|3|4">🏃 运动 30 分钟</button>' +
+      '    <button class="preset" data-p="📖|阅读 20 分钟|4|5">📖 阅读 20 分钟</button>' +
+      '    <button class="preset" data-p="🦷|早晚刷牙|6|7">🦷 早晚刷牙</button>' +
+      '    <button class="preset" data-p="📵|睡前不玩手机|2|7">📵 睡前不玩手机</button>' +
+      '  </div>' +
+      '</div>';
+  }
+  function bindEmpty(){
+    document.querySelectorAll('.preset').forEach(function(b){
+      b.addEventListener('click', function(){
+        var parts = b.dataset.p.split('|');
+        store.habits.push({
+          id: uid(), name: parts[1], emoji: parts[0], color: +parts[2],
+          target: +parts[3], created: TODAY, checks: {}
+        });
+        save(); render();
+        toast('已添加「' + parts[1] + '」，点击卡片打卡 ✅');
+        try { ACH.checkAll(); } catch (e) {}
+      });
+    });
+  }
+  function buildCard(h){
+    var col = COLORS[h.color % COLORS.length];
+    var card = document.createElement('div');
+    card.className = 'habit' + (h.checks[TODAY] ? ' done' : '');
+    card.dataset.id = h.id;
+    card.style.setProperty('--hc', col.c);
+    card.style.setProperty('--hc-soft', col.s);
+    var wk = habitWeekCount(h), tg = h.target;
+    var bars = '';
+    for (var i = 0; i < tg; i++) bars += '<div class="bar' + (i < wk ? ' on' : '') + '"></div>';
+    var streak = habitStreak(h), tot = habitTotal(h);
+    card.innerHTML = '' +
+      '<div class="top">' +
+      '  <div class="emoji">' + h.emoji + '</div>' +
+      '  <div><div class="name">' + esc(h.name) + '</div>' +
+      '  <div class="meta">' + (streak > 0 ? '连续 ' + streak + ' 天 · ' : '') + '累计 ' + tot + ' 次</div></div>' +
+      '</div>' +
+      '<div class="bars">' + bars + '</div>' +
+      '<div class="week">本周 ' + wk + ' / ' + tg + ' 天</div>' +
+      '<div class="badge">✓</div>' +
+      '<button class="menu" title="更多">···</button>';
+    card.addEventListener('click', function(ev){
+      if (ev.target.classList.contains('menu')) return;
+      toggleCheck(h.id);
+    });
+    card.querySelector('.menu').addEventListener('click', function(ev){
+      ev.stopPropagation();
+      openDetail(h.id);
+    });
+    return card;
+  }
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+  /* ================= 详情（日历）================= */
+  var calView = { id: null, y: 0, m: 0 };
+  function openDetail(id){
+    var h = store.habits.find(function(x){ return x.id === id; });
+    if (!h) return;
+    calView = { id: id, y: today.getFullYear(), m: today.getMonth() };
+    renderDetail();
+    $('detailMask').classList.add('show');
+  }
+  function renderDetail(){
+    var h = store.habits.find(function(x){ return x.id === calView.id; });
+    if (!h) return;
+    var col = COLORS[h.color % COLORS.length];
+    var streak = habitStreak(h), tot = habitTotal(h);
+    var y = calView.y, m = calView.m;
+    var first = new Date(y, m, 1);
+    var daysInMonth = new Date(y, m + 1, 0).getDate();
+    var lead = (first.getDay() + 6) % 7;
+    var cells = '';
+    ['一','二','三','四','五','六','日'].forEach(function(w){ cells += '<div class="wd">' + w + '</div>'; });
+    for (var i = 0; i < lead; i++) cells += '<div class="d blank"></div>';
+    var monthCount = 0;
+    for (var d = 1; d <= daysInMonth; d++) {
+      var key = y + '-' + pad(m + 1) + '-' + pad(d);
+      var on = h.checks[key];
+      if (on) monthCount++;
+      var cls = 'd' + (on ? ' on' : '') + (key === TODAY ? ' today' : '') + (key > TODAY ? ' future' : '');
+      cells += '<div class="' + cls + '">' + d + '</div>';
+    }
+    var el = $('detailModal');
+    el.style.setProperty('--hc', col.c);
+    el.style.setProperty('--hc-soft', col.s);
+    el.innerHTML = '' +
+      '<h3><span>目标详情</span><button id="detailClose">✕</button></h3>' +
+      '<div class="detail-head">' +
+      '  <div class="emoji" style="background:' + col.s + '">' + h.emoji + '</div>' +
+      '  <div><div class="n">' + esc(h.name) + '</div>' +
+      '  <div class="m">从 ' + h.created + ' 开始 · 每周目标 ' + h.target + ' 天</div></div>' +
+      '</div>' +
+      '<div class="d-stats">' +
+      '  <div class="d-stat"><div class="v">' + streak + '</div><div class="k">连续天数</div></div>' +
+      '  <div class="d-stat"><div class="v">' + tot + '</div><div class="k">累计打卡</div></div>' +
+      '  <div class="d-stat"><div class="v">' + monthCount + '</div><div class="k">本月完成</div></div>' +
+      '</div>' +
+      '<div class="cal-head"><button id="calPrev">‹</button><b>' + (I18N.lang() === 'en' ? ['January','February','March','April','May','June','July','August','September','October','November','December'][m] + ' ' + y : y + ' 年 ' + (m + 1) + ' 月') + '</b><button id="calNext">›</button></div>' +
+      '<div class="cal">' + cells + '</div>' +
+      '<div class="modal-actions">' +
+      '  <button class="btn btn-g" id="detailEdit">✏️ 编辑</button>' +
+      '  <button class="btn btn-danger" id="detailDel">🗑 删除</button>' +
+      '</div>';
+    $('detailClose').addEventListener('click', function(){ $('detailMask').classList.remove('show'); });
+    $('calPrev').addEventListener('click', function(){ calView.m--; if (calView.m < 0) { calView.m = 11; calView.y--; } renderDetail(); });
+    $('calNext').addEventListener('click', function(){ calView.m++; if (calView.m > 11) { calView.m = 0; calView.y++; } renderDetail(); });
+    $('detailEdit').addEventListener('click', function(){ $('detailMask').classList.remove('show'); openEdit(h); });
+    $('detailDel').addEventListener('click', function(){
+      if (confirm('确定删除「' + h.name + '」吗？打卡记录会一起消失哦')) {
+        store.habits = store.habits.filter(function(x){ return x.id !== h.id; });
+        save(); $('detailMask').classList.remove('show'); render();
+        toast('已删除');
+      }
+    });
+  }
+
+  /* ================= 导出 / 导入 ================= */
+  function exportData(){
+    var blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '打卡日程表-' + TODAY + '.json';
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 3000);
+    toast('已导出 ' + store.habits.length + ' 个目标的数据');
+  }
+  function importData(file){
+    var r = new FileReader();
+    r.onload = function(){
+      try {
+        var p = JSON.parse(r.result);
+        if (!p || !Array.isArray(p.habits)) throw new Error('bad');
+        store = p; save(); render();
+        toast('导入成功：' + p.habits.length + ' 个目标');
+        try { ACH.checkAll(); } catch (e) {}
+      } catch (e) { toast('导入失败：文件格式不对呀'); }
+    };
+    r.readAsText(file);
+  }
+
+  /* ================= 提示 ================= */
+  var toastEl = $('toast'), toastTimer = null;
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2000);
+  }
+
+  /* ================= 🏆 成就系统 ================= */
+  var ACH_KEY = 'daka_ach_v1';
+  var ACH_DEFS = [
+    { id: 'first_goal', emoji: '🌱', name: '启程', desc: '添加第一个目标' },
+    { id: 'total_10',   emoji: '📌', name: '小有积累', desc: '累计打卡 10 次' },
+    { id: 'total_100',  emoji: '💪', name: '百炼成钢', desc: '累计打卡 100 次' },
+    { id: 'streak_7',   emoji: '🔥', name: '七日之火', desc: '任一目标连续 7 天' },
+    { id: 'streak_30',  emoji: '🏔️', name: '三十天', desc: '任一目标连续 30 天' },
+    { id: 'full_day',   emoji: '🎯', name: '今日全勤', desc: '一天内完成全部目标' },
+    { id: 'habits_5',   emoji: '🧩', name: '多线作战', desc: '同时拥有 5 个目标' },
+    { id: 'early_bird', emoji: '🌅', name: '早起鸟', desc: '早上 8 点前完成打卡' },
+    { id: 'night_owl',  emoji: '🌙', name: '夜猫子', desc: '晚上 23 点后完成打卡' },
+    { id: 'colorful',   emoji: '🎨', name: '色彩收藏家', desc: '目标的主题色达到 4 种' }
+  ];
+  var ACH = (function () {
+    var st = { unlocked: {}, earlyBird: 0, nightOwl: 0 };
+    try {
+      var raw = localStorage.getItem(ACH_KEY);
+      if (raw) { var p = JSON.parse(raw); if (p && typeof p === 'object') { st = Object.assign(st, p); st.unlocked = p.unlocked || {}; } }
+    } catch (e) {}
+    function save() { try { localStorage.setItem(ACH_KEY, JSON.stringify(st)); } catch (e) {} }
+    function sumChecks() {
+      var n = 0;
+      store.habits.forEach(function (h) { for (var k in h.checks) if (h.checks[k]) n++; });
+      return n;
+    }
+    function maxStreak() {
+      var m = 0;
+      store.habits.forEach(function (h) { var s = habitStreak(h); if (s > m) m = s; });
+      return m;
+    }
+    function cond(id) {
+      switch (id) {
+        case 'first_goal': return store.habits.length >= 1;
+        case 'total_10': return sumChecks() >= 10;
+        case 'total_100': return sumChecks() >= 100;
+        case 'streak_7': return maxStreak() >= 7;
+        case 'streak_30': return maxStreak() >= 30;
+        case 'full_day':
+          return store.habits.length > 0 && store.habits.every(function (h) { return h.checks[TODAY]; });
+        case 'habits_5': return store.habits.length >= 5;
+        case 'early_bird': return st.earlyBird >= 1;
+        case 'night_owl': return st.nightOwl >= 1;
+        case 'colorful': {
+          var seen = {};
+          store.habits.forEach(function (h) { seen[h.color] = 1; });
+          return Object.keys(seen).length >= 4;
+        }
+      }
+      return false;
+    }
+    function unlockedCount() { return ACH_DEFS.filter(function (d) { return st.unlocked[d.id]; }).length; }
+    function refreshBtn() {
+      try { var b = $('achBtn'); if (b) b.textContent = '🏆 成就 ' + unlockedCount() + '/' + ACH_DEFS.length; } catch (e) {}
+    }
+    function banner(def) {
+      var el = document.getElementById('achBanner');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'achBanner'; el.className = 'ach-banner';
+        el.innerHTML = '<div class="emo"></div><div><div class="t1">🏆 成就解锁</div><div class="t2"></div><div class="t3"></div></div>';
+        document.body.appendChild(el);
+      }
+      el.querySelector('.emo').textContent = def.emoji;
+      el.querySelector('.t2').textContent = def.name;
+      el.querySelector('.t3').textContent = def.desc;
+      el.classList.add('show');
+      clearTimeout(banner._t);
+      banner._t = setTimeout(function () { el.classList.remove('show'); }, 3400);
+    }
+    function unlock(id) {
+      var def = ACH_DEFS.find(function (d) { return d.id === id; });
+      if (!def || st.unlocked[id]) return;
+      st.unlocked[id] = Date.now();
+      save(); refreshBtn(); banner(def);
+      try { toast('🏆 解锁成就「' + def.name + '」'); } catch (e) {}
+      /* v35：桥接跨站成就柜 */
+      try { if (window.STAch) window.STAch.unlock('daka.' + id, def.name, def.emoji); } catch (e) {}
+    }
+    function checkAll() { ACH_DEFS.forEach(function (d) { if (cond(d.id)) unlock(d.id); }); }
+    function onCheck() {
+      var hr = new Date().getHours();
+      if (hr < 8) st.earlyBird = 1;
+      if (hr >= 23) st.nightOwl = 1;
+      save(); checkAll();
+    }
+    function openPanel() {
+      var mask = document.getElementById('achMask');
+      if (!mask) {
+        mask = document.createElement('div');
+        mask.id = 'achMask'; mask.className = 'mask';
+        mask.innerHTML = '<div class="modal"><h3><span>🏆 我的成就</span><button id="achClose">✕</button></h3><div style="font-size:12px;color:#8a6f3e;margin-bottom:14px;line-height:1.7" id="achStats3"></div><div class="ach-grid2" id="achGrid2"></div></div>';
+        document.body.appendChild(mask);
+        mask.addEventListener('click', function (e) { if (e.target === mask) closePanel(); });
+        mask.querySelector('#achClose').addEventListener('click', closePanel);
+      }
+      $('achStats3').textContent = '已解锁 ' + unlockedCount() + ' / ' + ACH_DEFS.length + ' ｜ 累计打卡 ' + sumChecks() + ' 次 ｜ 最长连续 ' + maxStreak() + ' 天';
+      $('achGrid2').innerHTML = ACH_DEFS.map(function (d) {
+        var got = !!st.unlocked[d.id];
+        return '<div class="ach-item' + (got ? '' : ' locked') + '">' +
+          '<div class="ae">' + (got ? d.emoji : '🔒') + '</div>' +
+          '<div><div class="an">' + d.name + '</div><div class="ad">' + d.desc + (got ? ' · 已达成' : '') + '</div></div>' +
+          '</div>';
+      }).join('');
+      mask.classList.add('show');
+    }
+    function closePanel() { var m = document.getElementById('achMask'); if (m) m.classList.remove('show'); }
+    /* v35：把已解锁的站内成就补桥到跨站成就柜（历史数据补记） */
+    function bridgeAll() {
+      ACH_DEFS.forEach(function (d) {
+        if (st.unlocked[d.id]) {
+          try { if (window.STAch) window.STAch.unlock('daka.' + d.id, d.name, d.emoji); } catch (e) {}
+        }
+      });
+    }
+    refreshBtn();
+    checkAll();
+    return { onCheck: onCheck, checkAll: checkAll, openPanel: openPanel, closePanel: closePanel, bridgeAll: bridgeAll };
+  })();
+  /* v35：STAch 就绪后补桥历史成就 */
+  setTimeout(function () { try { ACH.bridgeAll(); } catch (e) {} }, 1400);
+
+  /* ================= 事件绑定 ================= */
+  buildPickers();
+  $('editSave').addEventListener('click', saveEdit);
+  $('editCancel').addEventListener('click', closeEdit);
+  $('editClose').addEventListener('click', closeEdit);
+  $('editMask').addEventListener('click', function(ev){ if (ev.target === this) closeEdit(); });
+  $('detailMask').addEventListener('click', function(ev){ if (ev.target === this) $('detailMask').classList.remove('show'); });
+  $('exportBtn').addEventListener('click', exportData);
+  $('achBtn').addEventListener('click', function () { try { ACH.openPanel(); } catch (e) {} });
+  $('importBtn').addEventListener('click', function(){ $('importFile').click(); });
+  $('importFile').addEventListener('change', function(ev){ if (ev.target.files[0]) importData(ev.target.files[0]); ev.target.value = ''; });
+  $('editName').addEventListener('keydown', function(ev){ if (ev.key === 'Enter') saveEdit(); });
+  document.addEventListener('keydown', function(ev){
+    if (ev.key === 'Escape') { $('editMask').classList.remove('show'); $('detailMask').classList.remove('show'); }
+  });
+
+  render();
+})();
+</script>
+<script>
+(function () {
+'use strict';
+/* ══════════════════════════════════════════════════════════
+   🏆 跨站成就 STAch（startian.top 全站共享；cookie .startian.top + localStorage 兜底）
+   v34 修复：本站此前未接入 STAch，"自律伊始"到访成就永远无法解锁
+   ══════════════════════════════════════════════════════════ */
+var STAch = (function () {
+    var KEY = 'st_ach';
+    function readCookie() {
+        var m = document.cookie.match(/(?:^|;\s*)st_ach=([^;]*)/);
+        if (!m) return null;
+        try { return JSON.parse(decodeURIComponent(m[1])) || []; } catch (e) { return null; }
+    }
+    function writeCookie(list) {
+        try {
+            var v = encodeURIComponent(JSON.stringify(list));
+            if (v.length < 3800) document.cookie = 'st_ach=' + v + ';domain=.startian.top;path=/;max-age=31536000;SameSite=Lax';
+        } catch (e) {}
+    }
+    var list = readCookie();
+    if (!list) { try { list = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { list = []; } }
+    if (!Array.isArray(list)) list = [];
+    function save() {
+        try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {}
+        writeCookie(list);
+    }
+    function unlock(id, name, ico) {
+        if (list.indexOf(id) >= 0) return false;
+        list.push(id);
+        save();
+        try {
+            var el = document.createElement('div');
+            el.style.cssText = 'position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(16px);opacity:0;z-index:9999;background:rgba(22,26,48,.94);color:#fff;border:1px solid rgba(140,170,255,.42);border-radius:999px;padding:12px 22px;font:700 13.5px/1.4 system-ui,sans-serif;box-shadow:0 18px 44px rgba(0,0,0,.42);transition:opacity .4s ease,transform .4s cubic-bezier(.2,.85,.3,1.1);pointer-events:none;max-width:86vw';
+            el.textContent = I18N.tr('🏆 成就解锁：') + (ico ? ico + ' ' : '') + I18N.tr(name || id);
+            document.body.appendChild(el);
+            requestAnimationFrame(function () { el.style.opacity = '1'; el.style.transform = 'translateX(-50%)'; });
+            setTimeout(function () {
+                el.style.opacity = '0';
+                el.style.transform = 'translateX(-50%) translateY(16px)';
+                setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 500);
+            }, 3200);
+        } catch (e) {}
+        return true;
+    }
+    return { list: function () { return list.slice(); }, has: function (id) { return list.indexOf(id) >= 0; }, unlock: unlock };
+})();
+window.STAch = STAch;
+setTimeout(function () { STAch.unlock('site.daka', '自律伊始', '🗓️'); }, 600);
+
+})();
+</script>
+<!-- 返回主页（全站统一按钮 · 2026-09-29） -->
+<a class="wb-home" href="https://startian.top/" title="返回星恬的小站主页">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg><span>主页</span>
+</a>
+<script>/*st-pt-tracker*/
+(function () {
+  'use strict';
+  try {
+    var PROJ = 'daka';
+    var host = location.hostname;
+    if (host !== 'startian.top' && !/\.startian\.top$/.test(host)) return;
+    var KEY = 'st_pt', DOMAIN = '.startian.top';
+    var last = Date.now();
+    function readMap() {
+      var m = {};
+      try {
+        var parts = document.cookie.split(';');
+        for (var i = 0; i < parts.length; i++) {
+          var p = parts[i].trim();
+          if (p.indexOf(KEY + '=') === 0) {
+            decodeURIComponent(p.slice(KEY.length + 1)).split('&').forEach(function (kv) {
+              var a = kv.split('=');
+              if (a[0]) m[a[0]] = parseInt(a[1], 10) || 0;
+            });
+            break;
+          }
+        }
+      } catch (e) {}
+      return m;
+    }
+    function flush() {
+      var now = Date.now();
+      var delta = Math.round((now - last) / 1000);
+      last = now;
+      if (delta < 5 || delta > 3600) return;
+      var m = readMap();
+      m[PROJ] = Math.min(99999999, (m[PROJ] || 0) + delta);
+      var out = [];
+      for (var k in m) out.push(k + '=' + m[k]);
+      try {
+        document.cookie = KEY + '=' + encodeURIComponent(out.join('&')) + '; domain=' + DOMAIN + '; path=/; max-age=63072000; SameSite=Lax';
+      } catch (e) {}
+    }
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') flush();
+      else last = Date.now();
+    });
+    window.addEventListener('pagehide', flush);
+    setInterval(function () { if (document.visibilityState === 'visible') flush(); }, 30000);
+  } catch (e) {}
+})();</script>
+</body>
+</html>
